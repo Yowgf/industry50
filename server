@@ -4,4 +4,4 @@ server_port=$1
 
 [ -z "$server_port" ] && echo Empty argument "'server_port'" && exit 1
 
-python3 monitoring/server_main.py -port=$server_port "${@:2}"
+python3 monitoring/server_main.py $server_port "${@:2}"

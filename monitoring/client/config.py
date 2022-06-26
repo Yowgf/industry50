@@ -11,6 +11,6 @@ def parse_config(args):
         raise ValueError(f"Need at least {min_args} arguments for the program")
 
     server_addr = args[0]
-    server_port = args[1]
+    server_port = int(args[1])
 
     return Config(server_addr, server_port)

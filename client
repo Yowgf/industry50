@@ -6,4 +6,4 @@ server_port=$2
 [ -z "$ip" ] && echo Empty argument "'ip'" && exit 1
 [ -z "$server_port" ] && echo Empty argument "'server_port'" && exit 1
 
-python3 monitoring/client_main.py -ip=$ip -server_port=$server_port "${@:3}"
+python3 monitoring/client_main.py $ip $server_port "${@:3}"
