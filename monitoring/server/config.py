@@ -9,6 +9,6 @@ def parse_config(args):
     if len(args) < min_args:
         raise ValueError(f"Need at least {min_args} arguments for the program")
 
-    server_port = args[0]
+    server_port = int(args[0])
 
     return Config(server_port)
