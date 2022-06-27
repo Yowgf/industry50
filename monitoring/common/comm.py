@@ -1,12 +1,20 @@
 import socket
 
+from .message import Message
+
+def encode_msg(msg):
+    return msg.encode()
+
+def decode_msg(msg_bytes):
+    return Message.decode(msg)
+
 def new_socket():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setblocking(True)
     return sock
 
-def send_str(sock, msg_str):
-    encoded_msg = encode_msg(msg_str)
+def send_str(sock, msg):
+    encoded_msg = encode_msg(msg)
     sock.send(encoded_msg)
 
 def recv_request(sock, print_incoming=False):

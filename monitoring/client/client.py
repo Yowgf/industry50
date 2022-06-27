@@ -1,7 +1,8 @@
 import socket
 
-from common.comm import new_socket
+from common.comm import new_socket, send_str
 from common import log
+from common.message import MESSAGE_BUILDERS
 from .defs import LOGGER_NAME
 from .command import Command
 
@@ -11,7 +12,7 @@ class Client:
     CLOSE_CONNECTION = "close connection"
     LIST_EQUIPMENT = "list equipment"
     # request information from <id_equipment>
-    REQUEST_INFORMATION = "request information from {}"
+    REQUEST_INFORMATION = "request information from"
 
     QUIT = "quit"
 
@@ -21,8 +22,11 @@ class Client:
 
         self._sock = None
 
+        self._equipments_in_network = []
+
     def init(self):
         self._connect()
+        self._register_equipment()
 
     def run(self):
         try:
@@ -46,13 +50,14 @@ class Client:
                 logger.error("Error closing connection: {}".format(e))
 
     def _parse_command(self, command_str):
-        if command_str == self.CLOSE_CONNECTION:
+        command_str = command_str.strip()
+        if command_str.startswith(self.CLOSE_CONNECTION):
             return Command(self.CLOSE_CONNECTION)
-        elif command_str == self.LIST_EQUIPMENT:
+        elif command_str.startswith(self.LIST_EQUIPMENT):
             return Command(self.LIST_EQUIPMENT)
-        elif command_str == self.REQUEST_INFORMATION:
+        elif command_str.startswith(self.REQUEST_INFORMATION):
             return Command(self.REQUEST_INFORMATION)
-        elif command_str == self.QUIT:
+        elif command_str.startswith(self.QUIT):
             return Command(self.QUIT)
         else:
             raise ValueError(f"Invalid command '{command_str}'")
@@ -66,6 +71,14 @@ class Client:
             pass
         else:
             raise ValueError(f"Malformed command with type '{command.type}'")
+
+    def _register_equipment(self):
+        builder = MESSAGE_BUILDERS["01"]
+        msg = builder()
+        self._send(msg)
+
+    def _send(self, msg):
+        send_str(self._sock, msg)
 
     def _connect(self):
         logger.info(f"Connecting client to {self._server_addr}:{self._server_port}")
