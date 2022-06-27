@@ -1,8 +1,19 @@
 import threading
 
-from common.comm import new_socket
+from common.comm import (new_socket,
+                         recv_request,
+                         send_str)
+from common.message import (ReqAdd,
+                            ReqRem,
+                            ResAdd,
+                            ResList,
+                            ReqInf,
+                            ResInf,
+                            Error,
+                            Ok,
+)
 from common import log
-from .limits import MAX_CONNECTIONS
+from .limits import MAX_CONNECTIONS, MAX_EQUIPMENTS
 from .defs import LOGGER_NAME
 
 logger = log.logger(LOGGER_NAME)
@@ -16,6 +27,12 @@ class Server:
 
         self._conn_threads = []
         self._conn_threads_mutex = threading.Lock()
+
+        self._free_equipids = ["{:02d}".format(i)
+                               # i \in {1, 2, ..., MAX_EQUIPMENTS}
+                               for i in range(1, MAX_EQUIPMENTS+1)]
+        self._used_equipids = set()
+        self._equipids_mutex = threading.Lock()
 
     def run(self):
         # bind "" == bind INADDR_ANY
@@ -69,9 +86,10 @@ class Server:
 
     def _dispatch_worker(self, client_sock, client_addr):
         logger.info("Dispatching worker for address '{}'".format(client_addr))
-        dispatched_worker = threading.Thread(target=self._recv,
-                                             args=(client_sock, client_addr))
-        self._conn_threads.append(dispatched_worker)
+        worker = threading.Thread(target=self._recv,
+                                  args=(client_sock, client_addr))
+        worker.start()
+        self._conn_threads.append(worker)
 
     def _recv(self, client_sock, client_addr):
         tid = threading.get_ident()
@@ -80,6 +98,7 @@ class Server:
             tid, client_addr))
 
         try:
+            # TODO: this 'while true' is very wrong.
             while True:
                 req = recv_request(client_sock, print_incoming=True)
                 resp = self._process_request(req)
@@ -89,3 +108,41 @@ class Server:
 
         logger.info("({}) Ended communication with client address '{}'".format(
             tid, client_addr))
+
+    def _process_request(self, req):
+        if isinstance(req, ReqAdd):
+            added_equipid = self._add_equipid()
+            print("Equipment {} added".format(added_equipid))
+            return ResAdd(payload=added_equipid)
+        elif isinstance(req, ReqRem):
+            equipid = req.originid
+            self._rmv_equipid(equipid)
+        # elif isinstance(req, ResAdd):
+        #     pass
+        # elif isinstance(req, ResList):
+        #     pass
+        elif isinstance(req, ReqInf):
+            pass
+        # elif isinstance(req, ResInf):
+        #     pass
+        # elif isinstance(req, Error):
+        #     pass
+        # elif isinstance(req, Ok):
+        #     pass
+        else:
+            raise ValueError("Received unexpected request type: {}".format(req))
+
+    def _add_equipid(self):
+        self._equipids_mutex.acquire()
+        assert len(self._free_equipids) > 0
+        equipid = self._free_equipids.pop(0)
+        self._used_equipids.add(equipid)
+        self._equipids_mutex.release()
+        return equipid
+
+    def _rmv_equipid(self, equipid):
+        self._equipids_mutex.acquire()
+        assert len(self._used_equipids) > 0
+        self._used_equipids.remove(equipid)
+        self._free_equipids.append(equipid)
+        self._equipids_mutex.release()

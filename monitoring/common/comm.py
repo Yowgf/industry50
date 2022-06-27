@@ -1,12 +1,15 @@
 import socket
 
-from .message import Message
+from .message import (Message,
+                      decode as message_decode)
+
+MAX_MSG_SIZE = 1024
 
 def encode_msg(msg):
     return msg.encode()
 
 def decode_msg(msg_bytes):
-    return Message.decode(msg)
+    return message_decode(msg_bytes)
 
 def new_socket():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -22,5 +25,4 @@ def recv_request(sock, print_incoming=False):
     msg = decode_msg(msg_bytes)
     if print_incoming:
         print(msg)
-    decoded_request = decode_request(msg)
-    return decoded_request
+    return msg

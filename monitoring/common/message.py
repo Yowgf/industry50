@@ -1,6 +1,9 @@
 import json
 
 from .errors import InvalidMessageError
+from common import log
+
+logger = log.logger("industry50-common")
 
 class Message:
     MSGNAME_KEY = "type"
@@ -27,31 +30,6 @@ class Message:
             m[Message.PAYLOAD_KEY] = self.payload
         return json.dumps(m).encode('ascii')
 
-    def decode(stream):
-        if len(stream) == 0:
-            raise InvalidMessageError(stream)
-
-        m = json.loads(stream)
-        if Message.MSGNAME_KEY not in m:
-            raise ValueError("Invalid message JSON '{}'. Missing key '{}'".format(
-                stream, Message.MSGNAME_KEY))
-        if Message.MSGID_KEY not in m:
-            raise ValueError("Invalid message JSON '{}'. Missing key '{}'".format(
-                stream, Message.MSGID_KEY))
-        msgname = m[Message.MSGNAME_KEY]
-        msgid = m[Message.MSGID_KEY]
-        originid = None
-        destid = None
-        payload = None
-        if Message.ORIGINID_KEY in m:
-            originid = m[Message.ORIGINID_KEY]
-        if Message.DESTID_KEY in m:
-            destid = m[Message.DESTID_KEY]
-        if Message.PAYLOAD_KEY in m:
-            payload = m[Message.PAYLOAD_KEY]
-        return Message(msgname, msgid, originid=originid, destid=destid,
-                       payload=payload)
-
 # LEGACY CODE, left here as a message schema reference.
 #
 # _MESSAGES = [
@@ -65,38 +43,84 @@ class Message:
 #     Message("OK", "08", destid=True, payload=True),
 # ]
 
-def req_add():
-    return Message("REQ_ADD", "01")
+class ReqAdd(Message):
+    def __init__(self, originid=None, destid=None, payload=None):
+        logger.debug("Constructing message of type req add")
+        super().__init__("REQ_ADD", "01")
 
-def req_rem(originid):
-    return Message("REQ_REM", "02", originid=originid)
+class ReqRem(Message):
+    def __init__(self, originid=None, destid=None, payload=None):
+        logger.debug("Constructing message of type req rem")
+        super().__init__("REQ_REM", "02", originid=originid)
 
-def res_add(payload):
-    return Message("RES_ADD", "03", payload=payload)
+class ResAdd(Message):
+    def __init__(self, originid=None, destid=None, payload=None):
+        logger.debug("Constructing message of type res add")
+        super().__init__("RES_ADD", "03", payload=payload)
 
-def res_list(payload):
-    return Message("RES_LIST", "04", payload=payload)
+class ResList(Message):
+    def __init__(self, originid=None, destid=None, payload=None):
+        logger.debug("Constructing message of type res list")
+        super().__init__("RES_LIST", "04", payload=payload)
 
-def req_inf(originid, destid):
-    return Message("REQ_INF", "05", originid=originid, destid=destid)
+class ReqInf(Message):
+    def __init__(self, originid=None, destid=None, payload=None):
+        logger.debug("Constructing message of type req inf")
+        super().__init__("REQ_INF", "05", originid=originid, destid=destid)
 
-def res_inf(originid, destid, payload):
-    return Message("RES_INF", "06", originid=originid, destid=destid,
-                   payload=payload)
+class ResInf(Message):
+    def __init__(self, originid=None, destid=None, payload=None):
+        logger.debug("Constructing message of type res inf")
+        super().__init__("RES_INF", "06", originid=originid, destid=destid,
+                         payload=payload)
 
-def error(destid, payload):
-    return Message("ERROR", "07", destid=destid, payload=payload)
+class Error(Message):
+    def __init__(self, originid=None, destid=None, payload=None):
+        logger.debug("Constructing message of type error")
+        super().__init__("ERROR", "07", destid=destid, payload=payload)
 
-def ok(destid, payload):
-    return Message("OK", "08", destid=destid, payload=payload)
+class Ok(Message):
+    def __init__(self, originid=None, destid=None, payload=None):
+        logger.debug("Constructing message of type ok")
+        super().__init__("OK", "08", destid=destid, payload=payload)
 
 MESSAGE_BUILDERS = {
-    "01": req_add,
-    "02": req_rem,
-    "03": res_add,
-    "04": res_list,
-    "05": req_inf,
-    "06": res_inf,
-    "07": error,
-    "08": ok,
+    "01": ReqAdd,
+    "02": ReqRem,
+    "03": ResAdd,
+    "04": ResList,
+    "05": ReqInf,
+    "06": ResInf,
+    "07": Error,
+    "08": Ok,
 }
+
+def decode(stream):
+    stream.decode('ascii')
+    if len(stream) == 0:
+        raise InvalidMessageError(stream)
+    
+    m = json.loads(stream)
+    if Message.MSGNAME_KEY not in m:
+        raise ValueError("Invalid message JSON '{}'. Missing key '{}'".format(
+            stream, Message.MSGNAME_KEY))
+    if Message.MSGID_KEY not in m:
+        raise ValueError("Invalid message JSON '{}'. Missing key '{}'".format(
+            stream, Message.MSGID_KEY))
+    _ = m[Message.MSGNAME_KEY] # currently not needed
+    msgid = m[Message.MSGID_KEY]
+    if msgid not in MESSAGE_BUILDERS:
+        raise InvalidMessageError(stream)
+
+    originid = None
+    destid = None
+    payload = None
+    if Message.ORIGINID_KEY in m:
+        originid = m[Message.ORIGINID_KEY]
+    if Message.DESTID_KEY in m:
+        destid = m[Message.DESTID_KEY]
+    if Message.PAYLOAD_KEY in m:
+        payload = m[Message.PAYLOAD_KEY]
+
+    builder = MESSAGE_BUILDERS[msgid]
+    return builder(originid=originid, destid=destid, payload=payload)
