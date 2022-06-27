@@ -1,8 +1,9 @@
 import socket
 
-from common.utils import new_socket
+from common.comm import new_socket
 from common import log
 from .defs import LOGGER_NAME
+from .command import Command
 
 logger = log.logger(LOGGER_NAME)
 
@@ -36,7 +37,8 @@ class Client:
                 self._process_command(command)
 
         except Exception as e:
-            logger.critical(f"Received unexpected error: {e}. Terminating client")
+            logger.critical(f"Received unexpected error: {e}. Terminating client",
+                            exc_info=True)
 
             try:
                 self._close()
