@@ -103,6 +103,8 @@ class Server:
                 req = recv_request(client_sock, print_incoming=True)
                 resp = self._process_request(req)
                 send_str(client_sock, resp)
+        except ConnectionResetError as e:
+            logger.info("Peer reset connection: {}".format(e))
         finally:
             client_sock.close()
 

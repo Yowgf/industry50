@@ -5,6 +5,8 @@ from common import log
 
 logger = log.logger("industry50-common")
 
+EQID_LEN = 2
+
 class Message:
     MSGNAME_KEY = "type"
     MSGID_KEY = "id"
@@ -21,27 +23,20 @@ class Message:
         self.payload = payload
 
     def encode(self):
-        m = {Message.MSGNAME_KEY: self.msgname, Message.MSGID_KEY: self.msgid}
-        if self.originid != None:
-            m[Message.ORIDINGID_KEY] = self.originid
-        if self.destid != None:
-            m[Message.DESTID_KEY] = self.destid
-        if self.payload != None:
-            m[Message.PAYLOAD_KEY] = self.payload
-        return json.dumps(m).encode('ascii')
-
-# LEGACY CODE, left here as a message schema reference.
-#
-# _MESSAGES = [
-#     Message("REQ_ADD", "01"),
-#     Message("REQ_REM", "02", originid=True),
-#     Message("RES_ADD", "03", payload=True),
-#     Message("RES_LIST", "04", payload=True),
-#     Message("REQ_INF", "05", originid=True, destid=True),
-#     Message("RES_INF", "06", originid=True, destid=True, payload=True),
-#     Message("ERROR", "07", destid=True, payload=True),
-#     Message("OK", "08", destid=True, payload=True),
-# ]
+        m = "{}".format(self.msgid)
+        if self.originid == None:
+            m += "-"
+        else:
+            m += str(self.originid)
+        if self.destid == None:
+            m += "-"
+        else:
+            m += str(self.destid)
+        if self.payload == None:
+            m += str(self.payload)
+        else:
+            m += "-"
+        return m.encode('ascii')
 
 class ReqAdd(Message):
     def __init__(self, originid=None, destid=None, payload=None):
@@ -96,31 +91,28 @@ MESSAGE_BUILDERS = {
 }
 
 def decode(stream):
-    stream.decode('ascii')
+    stream = stream.decode('ascii')
     if len(stream) == 0:
         raise InvalidMessageError(stream)
-    
-    m = json.loads(stream)
-    if Message.MSGNAME_KEY not in m:
-        raise ValueError("Invalid message JSON '{}'. Missing key '{}'".format(
-            stream, Message.MSGNAME_KEY))
-    if Message.MSGID_KEY not in m:
-        raise ValueError("Invalid message JSON '{}'. Missing key '{}'".format(
-            stream, Message.MSGID_KEY))
-    _ = m[Message.MSGNAME_KEY] # currently not needed
-    msgid = m[Message.MSGID_KEY]
-    if msgid not in MESSAGE_BUILDERS:
-        raise InvalidMessageError(stream)
 
-    originid = None
-    destid = None
-    payload = None
-    if Message.ORIGINID_KEY in m:
-        originid = m[Message.ORIGINID_KEY]
-    if Message.DESTID_KEY in m:
-        destid = m[Message.DESTID_KEY]
-    if Message.PAYLOAD_KEY in m:
-        payload = m[Message.PAYLOAD_KEY]
+    def component(stream, begin, offset=None):
+        ss = None
+        if stream[begin] == "-":
+            begin += 1
+        else:
+            if offset == None:
+                ss = stream[begin:]
+                begin = len(stream)
+            else:
+                ss = stream[begin:begin+offset]
+                begin += offset
+        return ss, begin
+
+    stream_pos = 0
+    msgid, stream_pos = component(stream, stream_pos, EQID_LEN)
+    originid, stream_pos = component(stream, stream_pos, EQID_LEN)
+    destid, stream_pos = component(stream, stream_pos, EQID_LEN)
+    payload, stream_pos = component(stream, stream_pos)
 
     builder = MESSAGE_BUILDERS[msgid]
     return builder(originid=originid, destid=destid, payload=payload)
