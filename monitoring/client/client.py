@@ -1,8 +1,16 @@
 import socket
 
-from common.comm import new_socket, send_str
+from common.comm import (new_socket,
+                         send_msg,
+                         MAX_MSG_SIZE)
 from common import log
-from common.message import MESSAGE_BUILDERS
+from common.message import (MESSAGE_BUILDERS,
+                            EQID_LEN,
+                            decode as decode_msg,
+                            ResAdd,
+                            ResList,
+                            Error,
+)
 from .defs import LOGGER_NAME
 from .command import Command
 
@@ -22,7 +30,8 @@ class Client:
 
         self._sock = None
 
-        self._equipments_in_network = []
+        self._equipid = None
+        self._other_equipids = []
 
     def init(self):
         self._connect()
@@ -56,7 +65,8 @@ class Client:
         elif command_str.startswith(self.LIST_EQUIPMENT):
             return Command(self.LIST_EQUIPMENT)
         elif command_str.startswith(self.REQUEST_INFORMATION):
-            return Command(self.REQUEST_INFORMATION)
+            args = command_str[len(self.REQUEST_INFORMATION):].lstrip().split(" ")
+            return Command(self.REQUEST_INFORMATION, args)
         elif command_str.startswith(self.QUIT):
             return Command(self.QUIT)
         else:
@@ -66,19 +76,52 @@ class Client:
         if command.type == self.CLOSE_CONNECTION:
             self._close()
         elif command.type == self.LIST_EQUIPMENT:
-            pass
+            self._list_equipment()
         elif command.type == self.REQUEST_INFORMATION:
-            pass
+            if len(command.args) == 0:
+                raise ValueError(f"Malformed command with type '{command.type}'. "+
+                                 f"Expected at least one argument.")
+
+            dest_equipid = command.args[0]
+            assert len(dest_equipid) == EQUIPID_LEN
+            self._request_information(dest_equipid)
         else:
             raise ValueError(f"Malformed command with type '{command.type}'")
 
     def _register_equipment(self):
-        builder = MESSAGE_BUILDERS["01"]
-        msg = builder()
+        req_builder = MESSAGE_BUILDERS["01"]
+        msg = req_builder()
+
+        self._send(msg)
+        # Expect to receive message with my ID in the network
+        resp_str = self._recv()
+        resp_msg = decode_msg(resp_str)
+
+        if resp_msg.msgid == Error.MSGID:
+            print(resp_msg.error())
+        elif resp_msg.msgid == ResAdd.MSGID:
+            self._equipid = resp_msg.payload
+            print("New ID: {}".format(self._equipid))
+
+            # Expect to receive message RES_LIST with IDs of other equipments in
+            # the network.
+            resp_str = self._recv()
+            resp_msg = decode_msg(resp_str)
+            self._other_equipids = resp_msg.equipments()
+
+    def _list_equipment(self):
+        print(" ".join(self._other_equipids))
+
+    def _request_information(self, destid):
+        builder = MESSAGE_BUILDERS["05"]
+        msg = builder(originid=TODO)
         self._send(msg)
 
     def _send(self, msg):
-        send_str(self._sock, msg)
+        send_msg(self._sock, msg)
+
+    def _recv(self):
+        return self._sock.recv(MAX_MSG_SIZE)
 
     def _connect(self):
         logger.info(f"Connecting client to {self._server_addr}:{self._server_port}")

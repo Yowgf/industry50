@@ -32,52 +32,91 @@ class Message:
             m += "-"
         else:
             m += str(self.destid)
-        if self.payload == None:
-            m += str(self.payload)
-        else:
+        if self.payload == None or self.payload == "":
             m += "-"
+        else:
+            m += str(self.payload)
         return m.encode('ascii')
 
 class ReqAdd(Message):
+    MSG_NAME = "REQ_ADD"
+    MSGID = "01"
     def __init__(self, originid=None, destid=None, payload=None):
         logger.debug("Constructing message of type req add")
-        super().__init__("REQ_ADD", "01")
+        super().__init__(self.MSG_NAME, self.MSGID)
 
 class ReqRem(Message):
+    MSG_NAME = "REQ_REM"
+    MSGID = "02"
     def __init__(self, originid=None, destid=None, payload=None):
-        logger.debug("Constructing message of type req rem")
-        super().__init__("REQ_REM", "02", originid=originid)
+        logger.debug("Constructing message of type req rem. Originid: {}".format(
+            originid))
+        super().__init__(self.MSG_NAME, self.MSGID, originid=originid)
 
 class ResAdd(Message):
+    MSG_NAME = "RES_ADD"
+    MSGID = "03"
     def __init__(self, originid=None, destid=None, payload=None):
-        logger.debug("Constructing message of type res add")
-        super().__init__("RES_ADD", "03", payload=payload)
+        logger.debug("Constructing message of type res add. Payload: {}".format(
+            payload))
+        super().__init__(self.MSG_NAME, self.MSGID, payload=payload)
 
 class ResList(Message):
+    MSG_NAME = "RES_LIST"
+    MSGID = "04"
     def __init__(self, originid=None, destid=None, payload=None):
-        logger.debug("Constructing message of type res list")
-        super().__init__("RES_LIST", "04", payload=payload)
+        logger.debug("Constructing message of type res list. Payload: {}".format(
+            payload))
+        super().__init__(self.MSG_NAME, self.MSGID, payload=payload)
+
+    def equipments(self):
+        if self.payload == None:
+            return []
+        return self.payload.split(" ")
 
 class ReqInf(Message):
+    MSG_NAME = "REQ_INF"
+    MSGID = "05"
     def __init__(self, originid=None, destid=None, payload=None):
-        logger.debug("Constructing message of type req inf")
-        super().__init__("REQ_INF", "05", originid=originid, destid=destid)
+        logger.debug("Constructing message of type req inf. originid={} destid={}".
+                     format(originid, destid))
+        super().__init__(self.MSG_NAME, self.MSGID, originid=originid, destid=destid)
 
 class ResInf(Message):
+    MSG_NAME = "RES_INF"
+    MSGID = "06"
     def __init__(self, originid=None, destid=None, payload=None):
-        logger.debug("Constructing message of type res inf")
-        super().__init__("RES_INF", "06", originid=originid, destid=destid,
+        logger.debug("Constructing message of type res inf. originid={originid} "+
+                     f"destid={destid} payload={payload}")
+        super().__init__(self.MSG_NAME, self.MSGID, originid=originid, destid=destid,
                          payload=payload)
 
 class Error(Message):
+    MSG_NAME = "ERROR"
+    MSGID = "07"
     def __init__(self, originid=None, destid=None, payload=None):
-        logger.debug("Constructing message of type error")
-        super().__init__("ERROR", "07", destid=destid, payload=payload)
+        logger.debug(f"Constructing message of type error. destid={destid} "+
+                     "payload={payload}")
+        super().__init__(self.MSG_NAME, self.MSGID, destid=destid, payload=payload)
+
+    def error(self):
+        if self.payload == "01":
+            return "Equipment not found"
+        elif self.payload == "02":
+            return "Source equipment not found"
+        elif self.payload == "03":
+            return "Target equipment not found"
+        elif self.payload == "04":
+            return "Equipment limit exceeded"
+        else:
+            raise ValueError(f"Unable to decode error for payload '{self.payload}'")
 
 class Ok(Message):
+    MSG_NAME = "OK"
+    MSGID = "08"
     def __init__(self, originid=None, destid=None, payload=None):
         logger.debug("Constructing message of type ok")
-        super().__init__("OK", "08", destid=destid, payload=payload)
+        super().__init__(self.MSG_NAME, self.MSGID, destid=destid, payload=payload)
 
 MESSAGE_BUILDERS = {
     "01": ReqAdd,
@@ -94,6 +133,8 @@ def decode(stream):
     stream = stream.decode('ascii')
     if len(stream) == 0:
         raise InvalidMessageError(stream)
+
+    logger.debug(f"Decoding stream '{stream}'")
 
     def component(stream, begin, offset=None):
         ss = None

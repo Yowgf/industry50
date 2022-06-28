@@ -2,7 +2,7 @@ import threading
 
 from common.comm import (new_socket,
                          recv_request,
-                         send_str)
+                         send_msg)
 from common.message import (ReqAdd,
                             ReqRem,
                             ResAdd,
@@ -12,6 +12,7 @@ from common.message import (ReqAdd,
                             Error,
                             Ok,
 )
+from common.errors import InvalidMessageError
 from common import log
 from .limits import MAX_CONNECTIONS, MAX_EQUIPMENTS
 from .defs import LOGGER_NAME
@@ -31,7 +32,7 @@ class Server:
         self._free_equipids = ["{:02d}".format(i)
                                # i \in {1, 2, ..., MAX_EQUIPMENTS}
                                for i in range(1, MAX_EQUIPMENTS+1)]
-        self._used_equipids = set()
+        self._used_equipids = []
         self._equipids_mutex = threading.Lock()
 
     def run(self):
@@ -101,21 +102,28 @@ class Server:
             # TODO: this 'while true' is very wrong.
             while True:
                 req = recv_request(client_sock, print_incoming=True)
-                resp = self._process_request(req)
-                send_str(client_sock, resp)
+                self._process_request(client_sock, req)
         except ConnectionResetError as e:
             logger.info("Peer reset connection: {}".format(e))
+        except InvalidMessageError as e:
+            logger.info("Received invalid message: {}".format(e))
         finally:
             client_sock.close()
 
         logger.info("({}) Ended communication with client address '{}'".format(
             tid, client_addr))
 
-    def _process_request(self, req):
+    def _process_request(self, sock, req):
         if isinstance(req, ReqAdd):
             added_equipid = self._add_equipid()
             print("Equipment {} added".format(added_equipid))
-            return ResAdd(payload=added_equipid)
+            resp = ResAdd(payload=added_equipid)
+            send_msg(sock, resp)
+
+            resp = ResList(payload=" ".join([equipid for equipid in
+                                             self._used_equipids
+                                             if equipid != added_equipid]))
+            send_msg(sock, resp)
         elif isinstance(req, ReqRem):
             equipid = req.originid
             self._rmv_equipid(equipid)
@@ -138,7 +146,7 @@ class Server:
         self._equipids_mutex.acquire()
         assert len(self._free_equipids) > 0
         equipid = self._free_equipids.pop(0)
-        self._used_equipids.add(equipid)
+        self._used_equipids.append(equipid)
         self._equipids_mutex.release()
         return equipid
 
