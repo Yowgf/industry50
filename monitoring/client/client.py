@@ -1,4 +1,5 @@
 import socket
+import threading
 
 from common.comm import (new_socket,
                          send_msg,
@@ -29,7 +30,9 @@ class Client:
         self._server_port = config.server_port
 
         self._sock = None
-
+        self._sock_mutex = threading.Lock()
+        # _listener is the thread that listens for messages from the server.
+        self._listener = None
         self._equipid = None
         self._other_equipids = []
 
@@ -39,10 +42,18 @@ class Client:
 
     def run(self):
         try:
+            self._listener = threading.Thread()
+
             command_str = ""
             while True:
+                try:
+                    # TODO: recv from server with small timeout
+                except TimeoutError as e:
+                    pass
+
+                # TODO: use sys.stdin instead. If there is nothing in stdin,
+                # continue.
                 command_str = input()
-                
                 command = self._parse_command(command_str)
                 if command.type == self.QUIT:
                     break
@@ -115,17 +126,24 @@ class Client:
     def _request_information(self, destid):
         builder = MESSAGE_BUILDERS["05"]
         msg = builder(originid=TODO)
-        self._send(msg)
+        self._send(msg)        
 
     def _send(self, msg):
+        self._sock_mutex.acquire()
         send_msg(self._sock, msg)
+        self._sock_mutex.release()
 
     def _recv(self):
-        return self._sock.recv(MAX_MSG_SIZE)
+        self._sock_mutex.acquire()
+        bs = self._sock.recv(MAX_MSG_SIZE)
+        self._sock_mutex.release()
+        return bs
 
     def _connect(self):
         logger.info(f"Connecting client to {self._server_addr}:{self._server_port}")
         self._sock = new_socket()
+        self._sock.setblocking(True)
+        self._sock.settimeout(0.1)
         self._sock.connect((self._server_addr, self._server_port))
         logger.info(f"Established connection to {self._server_addr}:"+
                     f"{self._server_port}")

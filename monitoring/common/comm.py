@@ -7,10 +7,14 @@ MAX_MSG_SIZE = 1024
 
 def new_socket():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setblocking(True)
+    sock.setblocking(False)
     return sock
 
 def send_msg(sock, msg):
+    encoded_msg = msg.encode()
+    sock.send(encoded_msg)
+
+def send_msg_broadcast(msg):
     encoded_msg = msg.encode()
     sock.send(encoded_msg)
 
