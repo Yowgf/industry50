@@ -12,6 +12,13 @@ from common.message import (ReqAdd,
                             Error,
                             Ok,
 )
+from common.code import (CODE_EQUIPMENT_NOT_FOUND,
+                         CODE_SOURCE_EQUIPMENT_NOT_FOUND,
+                         CODE_TARGET_EQUIPMENT_NOT_FOUND,
+                         CODE_EQUIPMENT_LIMIT_EXCEEDED,
+
+                         CODE_SUCCESSFUL_REMOVAL,
+)
 from common.errors import InvalidMessageError
 from common import log
 from .limits import MAX_CONNECTIONS, MAX_EQUIPMENTS
@@ -81,21 +88,29 @@ class Server:
             tid, client_addr))
 
         try:
-            while True:
+            done = False
+            while not done:
                 req = recv_request(client_sock, print_incoming=True)
-                self._process_request(client_sock, req)
+                done = self._process_request(sockid, client_sock, req)
         except ConnectionResetError as e:
             logger.info("Peer reset connection: {}".format(e))
+            self._cleanup_sock(sockid, client_sock)
+            try:
+                self._pop_client_sock(sockid)
+                client_sock.close()
+            except Exception as e:
+                logger.error("Error cleaning up: {}".format(e))
         except InvalidMessageError as e:
             logger.info("Received invalid message: {}".format(e))
-        finally:
-            self._pop_client_sock(sockid)
-            client_sock.close()            
+            self._cleanup_sock(sockid, client_sock)
+        except Exception as e:
+            logger.critical("Caught unexpected exception: {}".format(e),
+                            exc_info=True)
 
         logger.info("({}) Ended communication with client address '{}'".format(
             tid, client_addr))
 
-    def _process_request(self, sock, req):
+    def _process_request(self, sockid, sock, req):
         if isinstance(req, ReqAdd):
             added_equipid = self._add_equipid()
             print("Equipment {} added".format(added_equipid))
@@ -108,7 +123,20 @@ class Server:
             self._broadcast(resp)
         elif isinstance(req, ReqRem):
             equipid = req.originid
-            self._rmv_equipid(equipid)
+            equip_exists = self._rmv_equipid(equipid)
+            if not equip_exists:
+                resp = Error(payload=CODE_EQUIPMENT_NOT_FOUND.id)
+                send_msg(sock, resp)
+            else:
+                resp = Ok(destid=equipid, payload=CODE_SUCCESSFUL_REMOVAL.id)
+                send_msg(sock, resp)
+                self._cleanup_sock(sockid, sock)
+
+            resp_rem = ReqRem(originid=equipid)
+            self._broadcast(resp_rem)
+
+            return True
+
         # elif isinstance(req, ResAdd):
         #     pass
         # elif isinstance(req, ResList):
@@ -124,6 +152,8 @@ class Server:
         else:
             raise ValueError("Received unexpected request type: {}".format(req))
 
+        return False
+
     def _broadcast(self, msg):
         self._client_socks_mutex.acquire()
         logger.debug("Broadcasting message: {}".format(msg))
@@ -132,6 +162,13 @@ class Server:
             send_msg(self._client_socks[sockid], msg)
         logger.debug("Successfully performed broadcast")
         self._client_socks_mutex.release()
+
+    def _cleanup_sock(self, sockid, sock):
+        try:
+            self._pop_client_sock(sockid)
+            sock.close()
+        except Exception as e:
+            logger.error("Error cleaning up: {}".format(e))
 
     def _add_equipid(self):
         self._equipids_mutex.acquire()
@@ -143,10 +180,18 @@ class Server:
 
     def _rmv_equipid(self, equipid):
         self._equipids_mutex.acquire()
+
+        if equipid not in self._used_equipids:
+            self._equipids_mutex.release()
+            return False
+
         assert len(self._used_equipids) > 0
         self._used_equipids.remove(equipid)
         self._free_equipids.append(equipid)
+
         self._equipids_mutex.release()
+
+        return True
 
     def _push_client_sock(self, client_sock):
         self._client_socks_mutex.acquire()

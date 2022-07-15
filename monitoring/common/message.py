@@ -1,6 +1,12 @@
 import json
 
 from .errors import InvalidMessageError
+from .code import (CODE_EQUIPMENT_NOT_FOUND,
+                   CODE_SOURCE_EQUIPMENT_NOT_FOUND,
+                   CODE_TARGET_EQUIPMENT_NOT_FOUND,
+                   CODE_EQUIPMENT_LIMIT_EXCEEDED,
+                   CODE_SUCCESSFUL_REMOVAL,
+)
 from common import log
 
 logger = log.logger("industry50-common")
@@ -94,6 +100,7 @@ class ResInf(Message):
 class Error(Message):
     MSG_NAME = "ERROR"
     MSGID = "07"
+
     def __init__(self, originid=None, destid=None, payload=None):
         logger.debug(f"Constructing message of type error. destid={destid} "+
                      "payload={payload}")
@@ -114,9 +121,17 @@ class Error(Message):
 class Ok(Message):
     MSG_NAME = "OK"
     MSGID = "08"
+
+    CODES = {
+        CODE_SUCCESSFUL_REMOVAL.id: CODE_SUCCESSFUL_REMOVAL,
+    }
+
     def __init__(self, originid=None, destid=None, payload=None):
         logger.debug("Constructing message of type ok")
         super().__init__(self.MSG_NAME, self.MSGID, destid=destid, payload=payload)
+
+    def description(self):
+        return self.CODES[self.payload].description
 
 MESSAGE_BUILDERS = {
     "01": ReqAdd,

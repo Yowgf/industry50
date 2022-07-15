@@ -13,6 +13,7 @@ from common.message import (MESSAGE_BUILDERS,
                             ResAdd,
                             ResList,
                             Error,
+                            Ok,
 )
 from .defs import LOGGER_NAME
 from .command import Command
@@ -48,13 +49,11 @@ class Client:
 
             command_str = ""
             while True:
-                logger.debug("Checking for incoming message from server")
                 incoming = select.select([self._sock], [], [],
                                          self._SELECT_TIMEOUT)
                 if incoming[0]:
                     self._process_incoming()
 
-                logger.debug("Checking for  CLI command")
                 command_exists = select.select([sys.stdin], [], [],
                                                self._SELECT_TIMEOUT)
                 if not command_exists[0]:
@@ -63,19 +62,17 @@ class Client:
                     command_str = sys.stdin.readline()
                     logger.debug("Received command {}".format(command_str))
                     command = self._parse_command(command_str)
-                    if command.type == self.QUIT:
+                    done = self._process_command(command)
+                    if done:
                         break
-                    
-                    self._process_command(command)
 
         except Exception as e:
             logger.critical(f"Received unexpected error: {e}. Terminating client",
                             exc_info=True)
-
             try:
-                self._close()
+                self._sock.close()
             except Exception as e:
-                logger.error("Error closing connection: {}".format(e))
+                logger.error("Error closing socket: {}".format(e))
 
     def _parse_command(self, command_str):
         command_str = command_str.strip()
@@ -92,8 +89,11 @@ class Client:
             raise ValueError(f"Invalid command '{command_str}'")
 
     def _process_command(self, command):
-        if command.type == self.CLOSE_CONNECTION:
+        if command.type == self.QUIT:
+            return True
+        elif command.type == self.CLOSE_CONNECTION:
             self._close()
+            return True
         elif command.type == self.LIST_EQUIPMENT:
             self._list_equipment()
         elif command.type == self.REQUEST_INFORMATION:
@@ -112,6 +112,8 @@ class Client:
         # Currently, the only message the server broadcasts to the devices is
         # the ResList message, in which we need to register the received
         # equipment IDs.
+        #
+        # TODO: add REQ_REM(id)
         self._register_other_equipments()
 
     def _register_equipment(self):
@@ -125,7 +127,6 @@ class Client:
         # Expect to receive message with my ID in the network
         resp_str = self._recv()
         resp_msg = decode_msg(resp_str)
-        logger.debug("Got message with my new ID: {}".format(resp_msg))
 
         if resp_msg.msgid == Error.MSGID:
             print(resp_msg.error())
@@ -164,4 +165,16 @@ class Client:
 
     def _close(self):
         logger.info(f"Closing connection to {self._server_addr}:{self._server_port}")
+
+        req_builder = MESSAGE_BUILDERS["02"]
+        remove_equip_msg = req_builder(originid=self._equipid)
+        self._send(remove_equip_msg)
+
+        resp_str = self._recv()
+        resp_msg = decode_msg(resp_str)
+        if resp_msg.msgid == Error.MSGID:
+            print(resp_msg.error())
+        elif resp_msg.msgid == Ok.MSGID:            
+            print(resp_msg.description())
+
         self._sock.close()
