@@ -1,4 +1,6 @@
 import socket
+import select
+import sys
 import threading
 
 from common.comm import (new_socket,
@@ -25,14 +27,14 @@ class Client:
 
     QUIT = "quit"
 
+    _SELECT_TIMEOUT = 0.01 # Seconds
+
     def __init__(self, config):
         self._server_addr = config.server_addr
         self._server_port = config.server_port
 
         self._sock = None
-        self._sock_mutex = threading.Lock()
         # _listener is the thread that listens for messages from the server.
-        self._listener = None
         self._equipid = None
         self._other_equipids = []
 
@@ -42,23 +44,29 @@ class Client:
 
     def run(self):
         try:
-            self._listener = threading.Thread()
+            logger.info("Running industry 5.0 client")
 
             command_str = ""
             while True:
-                try:
-                    # TODO: recv from server with small timeout
-                except TimeoutError as e:
-                    pass
+                logger.debug("Checking for incoming message from server")
+                incoming = select.select([self._sock], [], [],
+                                         self._SELECT_TIMEOUT)
+                if incoming[0]:
+                    self._process_incoming()
 
-                # TODO: use sys.stdin instead. If there is nothing in stdin,
-                # continue.
-                command_str = input()
-                command = self._parse_command(command_str)
-                if command.type == self.QUIT:
-                    break
-                
-                self._process_command(command)
+                logger.debug("Checking for  CLI command")
+                command_exists = select.select([sys.stdin], [], [],
+                                               self._SELECT_TIMEOUT)
+                if not command_exists[0]:
+                    continue
+                else:
+                    command_str = sys.stdin.readline()
+                    logger.debug("Received command {}".format(command_str))
+                    command = self._parse_command(command_str)
+                    if command.type == self.QUIT:
+                        break
+                    
+                    self._process_command(command)
 
         except Exception as e:
             logger.critical(f"Received unexpected error: {e}. Terminating client",
@@ -99,14 +107,25 @@ class Client:
         else:
             raise ValueError(f"Malformed command with type '{command.type}'")
 
+    def _process_incoming(self):
+        logger.debug("Processing incoming message from server")
+        # Currently, the only message the server broadcasts to the devices is
+        # the ResList message, in which we need to register the received
+        # equipment IDs.
+        self._register_other_equipments()
+
     def _register_equipment(self):
+        logger.debug("Registering equipment")
+
         req_builder = MESSAGE_BUILDERS["01"]
         msg = req_builder()
-
         self._send(msg)
+        logger.debug("Sent register message")
+
         # Expect to receive message with my ID in the network
         resp_str = self._recv()
         resp_msg = decode_msg(resp_str)
+        logger.debug("Got message with my new ID: {}".format(resp_msg))
 
         if resp_msg.msgid == Error.MSGID:
             print(resp_msg.error())
@@ -114,12 +133,13 @@ class Client:
             self._equipid = resp_msg.payload
             print("New ID: {}".format(self._equipid))
 
-            # Expect to receive message RES_LIST with IDs of other equipments in
-            # the network.
-            resp_str = self._recv()
-            resp_msg = decode_msg(resp_str)
-            self._other_equipids = resp_msg.equipments()
+            self._register_other_equipments()
 
+    def _register_other_equipments(self):
+        resp_str = self._recv()
+        resp_msg = decode_msg(resp_str)
+        self._other_equipids = resp_msg.equipments()
+        
     def _list_equipment(self):
         print(" ".join(self._other_equipids))
 
@@ -129,21 +149,15 @@ class Client:
         self._send(msg)        
 
     def _send(self, msg):
-        self._sock_mutex.acquire()
         send_msg(self._sock, msg)
-        self._sock_mutex.release()
 
     def _recv(self):
-        self._sock_mutex.acquire()
         bs = self._sock.recv(MAX_MSG_SIZE)
-        self._sock_mutex.release()
         return bs
 
     def _connect(self):
         logger.info(f"Connecting client to {self._server_addr}:{self._server_port}")
         self._sock = new_socket()
-        self._sock.setblocking(True)
-        self._sock.settimeout(0.1)
         self._sock.connect((self._server_addr, self._server_port))
         logger.info(f"Established connection to {self._server_addr}:"+
                     f"{self._server_port}")

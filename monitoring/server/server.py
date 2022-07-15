@@ -2,8 +2,7 @@ import threading
 
 from common.comm import (new_socket,
                          recv_request,
-                         send_msg,
-                         send_msg_broadcast)
+                         send_msg)
 from common.message import (ReqAdd,
                             ReqRem,
                             ResAdd,
@@ -51,7 +50,6 @@ class Server:
         finally:
             try:
                 self._sock.close()
-                raise
             except Exception as e:
                 logger.error(f"Error trying to close socket: {e}")
 
@@ -91,7 +89,6 @@ class Server:
         except InvalidMessageError as e:
             logger.info("Received invalid message: {}".format(e))
         finally:
-            ct_name = threading.current_thread().getName()
             self._pop_client_sock(sockid)
             client_sock.close()            
 
@@ -129,8 +126,11 @@ class Server:
 
     def _broadcast(self, msg):
         self._client_socks_mutex.acquire()
-        for sock in self._client_socks:
-            send_msg(sock, msg)
+        logger.debug("Broadcasting message: {}".format(msg))
+        for sockid in self._client_socks:
+            logger.debug("Sending message to socket {}".format(sockid))
+            send_msg(self._client_socks[sockid], msg)
+        logger.debug("Successfully performed broadcast")
         self._client_socks_mutex.release()
 
     def _add_equipid(self):
