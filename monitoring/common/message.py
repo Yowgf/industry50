@@ -67,6 +67,9 @@ class ResAdd(Message):
             payload))
         super().__init__(self.MSG_NAME, self.MSGID, payload=payload)
 
+    def equipid(self):
+        return self.payload
+
 class ResList(Message):
     MSG_NAME = "RES_LIST"
     MSGID = "04"

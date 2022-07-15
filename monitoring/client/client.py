@@ -10,8 +10,13 @@ from common import log
 from common.message import (MESSAGE_BUILDERS,
                             EQID_LEN,
                             decode as decode_msg,
+
+                            ReqAdd,
+                            ReqRem,
                             ResAdd,
                             ResList,
+                            ReqInf,
+                            ResInf,
                             Error,
                             Ok,
 )
@@ -109,12 +114,22 @@ class Client:
 
     def _process_incoming(self):
         logger.debug("Processing incoming message from server")
-        # Currently, the only message the server broadcasts to the devices is
-        # the ResList message, in which we need to register the received
-        # equipment IDs.
-        #
-        # TODO: add REQ_REM(id)
-        self._register_other_equipments()
+
+        resp_str = self._recv()
+        resp_msg = decode_msg(resp_str)
+        if resp_msg.MSGID == ReqRem.MSGID:
+            removed_equipid = resp_msg.originid
+            self._other_equipids.remove(removed_equipid)
+            logger.debug("Removed equipment id {}".format(removed_equipid))
+        elif resp_msg.MSGID == ResAdd.MSGID:
+            new_equipid = resp_msg.equipid()
+            self._other_equipids.append(new_equipid)
+            logger.debug("Added equipment id {}".format(new_equipid))
+            print("Equipment {} added".format(new_equipid))
+        elif resp_msg.MSGID == ResList.MSGID:
+            self._other_equipids = resp_msg.equipments()
+            logger.debug("New list of equipment ids: {}".format(
+                self._other_equipids))
 
     def _register_equipment(self):
         logger.debug("Registering equipment")
@@ -122,7 +137,6 @@ class Client:
         req_builder = MESSAGE_BUILDERS["01"]
         msg = req_builder()
         self._send(msg)
-        logger.debug("Sent register message")
 
         # Expect to receive message with my ID in the network
         resp_str = self._recv()
@@ -134,20 +148,18 @@ class Client:
             self._equipid = resp_msg.payload
             print("New ID: {}".format(self._equipid))
 
-            self._register_other_equipments()
+            resp_str = self._recv()
+            resp_msg = decode_msg(resp_str)
+            self._other_equipids = resp_msg.equipments()
 
-    def _register_other_equipments(self):
-        resp_str = self._recv()
-        resp_msg = decode_msg(resp_str)
-        self._other_equipids = resp_msg.equipments()
-        
     def _list_equipment(self):
         print(" ".join(self._other_equipids))
 
+    # TODO
     def _request_information(self, destid):
         builder = MESSAGE_BUILDERS["05"]
         msg = builder(originid=TODO)
-        self._send(msg)        
+        self._send(msg)
 
     def _send(self, msg):
         send_msg(self._sock, msg)

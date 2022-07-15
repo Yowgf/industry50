@@ -64,15 +64,7 @@ class Server:
         client_sock, client_addr = self._sock.accept()
         logger.info(f"Received connection from address {client_addr}")
 
-        len_client_socks = self._len_client_socks()
-        if len_client_socks >= MAX_CONNECTIONS:
-            self._refuse_equipment_registration(client_sock, client_addr)
-        else:
-            self._dispatch_worker(client_sock, client_addr)
-
-    # TODO: test
-    def _refuse_equipment_registration(self, client_sock, client_addr):
-        pass
+        self._dispatch_worker(client_sock, client_addr)
 
     def _dispatch_worker(self, client_sock, client_addr):
         logger.info("Dispatching worker for address '{}'".format(client_addr))
@@ -112,15 +104,22 @@ class Server:
 
     def _process_request(self, sockid, sock, req):
         if isinstance(req, ReqAdd):
+            len_client_socks = self._len_client_socks()
+            if len_client_socks >= MAX_CONNECTIONS:
+                resp = Error(destid="{}".format(len_client_socks),
+                             payload=CODE_EQUIPMENT_LIMIT_EXCEEDED.id)
+                send_msg(sock, resp)
+                return True
+
             added_equipid = self._add_equipid()
             print("Equipment {} added".format(added_equipid))
             resp = ResAdd(payload=added_equipid)
-            send_msg(sock, resp)
+            self._broadcast(resp)
 
             resp = ResList(payload=" ".join([equipid for equipid in
                                              self._used_equipids
                                              if equipid != added_equipid]))
-            self._broadcast(resp)
+            send_msg(sock, resp)
         elif isinstance(req, ReqRem):
             equipid = req.originid
             equip_exists = self._rmv_equipid(equipid)
@@ -154,10 +153,12 @@ class Server:
 
         return False
 
-    def _broadcast(self, msg):
+    def _broadcast(self, msg, except_sockid=None):
         self._client_socks_mutex.acquire()
         logger.debug("Broadcasting message: {}".format(msg))
         for sockid in self._client_socks:
+            if except_sockid == sockid:
+                continue
             logger.debug("Sending message to socket {}".format(sockid))
             send_msg(self._client_socks[sockid], msg)
         logger.debug("Successfully performed broadcast")
