@@ -139,8 +139,8 @@ class Client:
                           payload=info)
             self._send(resp)
         elif msg.msgid == ResInf.MSGID:
-            print("Value from {} : {}".format(msg.originid,
-                                              msg.value()))
+            print("Value from {}: {}".format(msg.originid,
+                                             msg.value()))
         elif msg.MSGID == Error.MSGID:
             print(msg.error())
         elif msg.msgid == Ok.MSGID:            
@@ -194,5 +194,7 @@ class Client:
         msg = self._recv()
         if msg.msgid == Error.MSGID:
             print(msg.error())
+        else:
+            print("Successful removal")
 
         self._sock.close()
