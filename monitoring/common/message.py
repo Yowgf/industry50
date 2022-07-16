@@ -12,6 +12,7 @@ from common import log
 logger = log.logger("industry50-common")
 
 EQID_LEN = 2
+MESSAGE_DELIMITER = "\n"
 
 class Message:
     MSGNAME_KEY = "type"
@@ -42,6 +43,7 @@ class Message:
             m += "-"
         else:
             m += str(self.payload)
+        m += "\n"
         return m.encode('ascii')
 
 class ReqAdd(Message):
@@ -151,7 +153,6 @@ MESSAGE_BUILDERS = {
 }
 
 def decode(stream):
-    stream = stream.decode('ascii')
     if len(stream) == 0:
         raise InvalidMessageError(stream)
 
@@ -168,6 +169,8 @@ def decode(stream):
             else:
                 ss = stream[begin:begin+offset]
                 begin += offset
+        if ss != None:
+            ss = ss.strip()
         return ss, begin
 
     stream_pos = 0

@@ -1,7 +1,7 @@
 import threading
 
 from common.comm import (new_socket,
-                         recv_request,
+                         recv_msg,
                          send_msg)
 from common.message import (ReqAdd,
                             ReqRem,
@@ -82,7 +82,7 @@ class Server:
         try:
             done = False
             while not done:
-                req = recv_request(client_sock, print_incoming=True)
+                req = recv_msg(client_sock)
                 done, new_equipid = self._process_request(client_sock, req)
                 if equipid == None:
                     equipid = new_equipid

@@ -6,6 +6,7 @@ import threading
 
 from common.comm import (new_socket,
                          send_msg,
+                         recv_msg,
                          MAX_MSG_SIZE)
 from common import log
 from common.message import (MESSAGE_BUILDERS,
@@ -174,9 +175,7 @@ class Client:
         send_msg(self._sock, msg)
 
     def _recv(self):
-        s = self._sock.recv(MAX_MSG_SIZE)
-        msg = decode_msg(s)
-        return msg
+        return recv_msg(self._sock)
 
     def _connect(self):
         logger.info(f"Connecting client to {self._server_addr}:{self._server_port}")
