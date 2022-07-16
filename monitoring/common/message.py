@@ -95,10 +95,13 @@ class ResInf(Message):
     MSG_NAME = "RES_INF"
     MSGID = "06"
     def __init__(self, originid=None, destid=None, payload=None):
-        logger.debug("Constructing message of type res inf. originid={originid} "+
+        logger.debug(f"Constructing message of type res inf. originid={originid} "+
                      f"destid={destid} payload={payload}")
         super().__init__(self.MSG_NAME, self.MSGID, originid=originid, destid=destid,
                          payload=payload)
+
+    def value(self):
+        return self.payload
 
 class Error(Message):
     MSG_NAME = "ERROR"

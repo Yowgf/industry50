@@ -1,3 +1,4 @@
+import random
 import socket
 import select
 import sys
@@ -107,7 +108,6 @@ class Client:
                                  f"Expected at least one argument.")
 
             dest_equipid = command.args[0]
-            assert len(dest_equipid) == EQUIPID_LEN
             self._request_information(dest_equipid)
         else:
             raise ValueError(f"Malformed command with type '{command.type}'")
@@ -115,21 +115,35 @@ class Client:
     def _process_incoming(self):
         logger.debug("Processing incoming message from server")
 
-        resp_str = self._recv()
-        resp_msg = decode_msg(resp_str)
-        if resp_msg.MSGID == ReqRem.MSGID:
-            removed_equipid = resp_msg.originid
+        msg = self._recv()
+        if msg.MSGID == ReqRem.MSGID:
+            removed_equipid = msg.originid
             self._other_equipids.remove(removed_equipid)
             logger.debug("Removed equipment id {}".format(removed_equipid))
-        elif resp_msg.MSGID == ResAdd.MSGID:
-            new_equipid = resp_msg.equipid()
+            print("Equipment {} removed".format(removed_equipid))
+        elif msg.MSGID == ResAdd.MSGID:
+            new_equipid = msg.equipid()
             self._other_equipids.append(new_equipid)
             logger.debug("Added equipment id {}".format(new_equipid))
             print("Equipment {} added".format(new_equipid))
-        elif resp_msg.MSGID == ResList.MSGID:
-            self._other_equipids = resp_msg.equipments()
+        elif msg.MSGID == ResList.MSGID:
+            self._other_equipids = msg.equipments()
             logger.debug("New list of equipment ids: {}".format(
                 self._other_equipids))
+        elif msg.MSGID == ReqInf.MSGID:
+            print("requested information")
+            info = str(round(random.random() * 10, 2))
+            resp = ResInf(originid=self._equipid,
+                          destid=msg.originid,
+                          payload=info)
+            self._send(resp)
+        elif msg.msgid == ResInf.MSGID:
+            print("Value from {} : {}".format(msg.originid,
+                                              msg.value()))
+        elif msg.MSGID == Error.MSGID:
+            print(msg.error())
+        elif msg.msgid == Ok.MSGID:            
+            print(msg.description())
 
     def _register_equipment(self):
         logger.debug("Registering equipment")
@@ -139,34 +153,30 @@ class Client:
         self._send(msg)
 
         # Expect to receive message with my ID in the network
-        resp_str = self._recv()
-        resp_msg = decode_msg(resp_str)
-
-        if resp_msg.msgid == Error.MSGID:
-            print(resp_msg.error())
-        elif resp_msg.msgid == ResAdd.MSGID:
-            self._equipid = resp_msg.payload
+        msg = self._recv()
+        if msg.msgid == Error.MSGID:
+            print(msg.error())
+        elif msg.msgid == ResAdd.MSGID:
+            self._equipid = msg.payload
             print("New ID: {}".format(self._equipid))
 
-            resp_str = self._recv()
-            resp_msg = decode_msg(resp_str)
-            self._other_equipids = resp_msg.equipments()
+            msg = self._recv()
+            self._other_equipids = msg.equipments()
 
     def _list_equipment(self):
         print(" ".join(self._other_equipids))
 
-    # TODO
     def _request_information(self, destid):
-        builder = MESSAGE_BUILDERS["05"]
-        msg = builder(originid=TODO)
+        msg = ReqInf(originid=self._equipid, destid=destid)
         self._send(msg)
 
     def _send(self, msg):
         send_msg(self._sock, msg)
 
     def _recv(self):
-        bs = self._sock.recv(MAX_MSG_SIZE)
-        return bs
+        s = self._sock.recv(MAX_MSG_SIZE)
+        msg = decode_msg(s)
+        return msg
 
     def _connect(self):
         logger.info(f"Connecting client to {self._server_addr}:{self._server_port}")
@@ -182,11 +192,8 @@ class Client:
         remove_equip_msg = req_builder(originid=self._equipid)
         self._send(remove_equip_msg)
 
-        resp_str = self._recv()
-        resp_msg = decode_msg(resp_str)
-        if resp_msg.msgid == Error.MSGID:
-            print(resp_msg.error())
-        elif resp_msg.msgid == Ok.MSGID:            
-            print(resp_msg.description())
+        msg = self._recv()
+        if msg.msgid == Error.MSGID:
+            print(msg.error())
 
         self._sock.close()
