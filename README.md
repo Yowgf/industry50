@@ -1,3 +1,4 @@
-# industry50
+# Industry50
 
-O relatório pode ser encontrado em `docs/report.pdf`.
+Python socket-based implementation of theoretical industry sensor-server star
+network.
